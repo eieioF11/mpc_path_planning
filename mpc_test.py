@@ -14,22 +14,51 @@ class mpc_config(object):
     control_weight = [1.0, 1.0, 1.0]  # 制御入力への重み R
     final_state_weight = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # 終端の状態への重み Q_final
     # final_control_weight = [1.0, 1.0, 1.0]  # 終端の制御入力への重み R_final
+    # モデルパラメータ
+    xy_vel_time_constant = 0.0
+    theta_vel_time_constant = 0.0
 
     def __init__(self):
         pass
 
 
-opti = casadi.Opti()
+opti_ = casadi.Opti()
 
 config_ = mpc_config()
+
+
+lpf_xy_gain_ = config_.dt / (config_.dt + config_.xy_vel_time_constant)
+lpf_theta_gain_ = config_.dt / (config_.dt + config_.theta_vel_time_constant)
+
+
+# 離散化した全方位移動モデル
+# 静止座標系
+# 入力量: 各軸方向の速度入力、実際の機体速度はこの入力に遅れが生じたものであるとする
+# 状態量: [vel_x, vel_y, vel_theta, pos_x, pos_y, pos_theta]^T
+def gen_kinematic_model():
+    # 状態量
+    vel = casadi.MX.sym("vel", 3)
+    pos = casadi.MX.sym("pos", 3)
+    state = casadi.vertcat(vel, pos)
+    # 入力量
+    control = casadi.MX.sym("control", 3)
+
+    MJ = casadi.vertcat(lpf_xy_gain_, lpf_xy_gain_, lpf_theta_gain_)
+    MMJ = casadi.MX.ones(3) - MJ
+    vel_next = casadi.times(MMJ, vel) + casadi.times(MJ, control)
+    pos_next = pos + config_.dt * vel_next
+    state_next = casadi.vertcat(vel_next, pos_next)
+    return casadi.Function("kinematic_model", [state, control], [state_next])
+
+
 # 最適化変数
 u_sol_ = casadi.DM.zeros(3, config_.horizon)
 x_sol_ = casadi.DM.zeros(6, config_.horizon + 1)
 x_init_ = casadi.DM.zeros(x_sol_.size())
-U = opti.variable(3, config_.horizon)
-X = opti.variable(6, config_.horizon + 1)
-X_target_ = opti.parameter(6, 1)
-curr_state_ = opti.parameter(6, 1)
+U = opti_.variable(3, config_.horizon)
+X = opti_.variable(6, config_.horizon + 1)
+X_target_ = opti_.parameter(6, 1)
+current_state_ = opti_.parameter(6, 1)
 # 重み
 R_vec = casadi.DM(config_.control_weight)
 Q_vec = casadi.DM(config_.state_weight)
@@ -43,25 +72,38 @@ print(R)
 # 評価関数
 obj = casadi.MX.zeros(1)
 for i in range(config_.horizon):
-    dx_i = X[:,i + 1] - X_target_
-    du = U[:,i]
+    dx_i = X[:, i + 1] - X_target_
+    du = U[:, i]
     obj += casadi.mtimes(casadi.mtimes(dx_i.T, Q), dx_i)
     obj += casadi.mtimes(casadi.mtimes(du.T, R), du)
-    print(dx_i)
-    print(du)
 dx_final = X[config_.horizon] - X_target_
 obj += casadi.mtimes(casadi.mtimes(dx_final.T, Q_final), dx_final)
 print(obj)
-opti.minimize(obj)
+opti_.minimize(obj)
 # 制約条件を定義
-# opti.subject_to( x1*x2 >= 1 )
-# opti.subject_to( x1 >=0 )
-# opti.subject_to( x2 >=0 )
+kinematic_model = gen_kinematic_model()
+opti_.subject_to(X[:, 0] == current_state_)  # 初期状態
+for i in range(config_.horizon):
+    # 対象が従う運動モデル
+    opti_.subject_to(X[:, i + 1] == kinematic_model(X[:, i], U[:, i])[0])
+    # 加速度制約
+    max_vel_diff_sqr = (config_.max_acceleration * config_.dt)**2
+    diff_vel = X[0:2, i + 1] - X[0:2, i]
+    opti_.subject_to(diff_vel**2 <= max_vel_diff_sqr)
+    diff_angular = X[2, i + 1] - X[2, i]
+    opti_.subject_to(-config_.max_angular_acceleration * config_.dt <= diff_angular)
+    opti_.subject_to(diff_angular <= config_.max_angular_acceleration * config_.dt)
+    # 速度制約
+    diff_xy = X[3:5, i + 1] - X[3:5, i]
+    opti_.subject_to(diff_xy**2 <= config_.max_velocity)
+    diff_yaw = X[5, i + 1] - X[5, i]
+    opti_.subject_to(-config_.max_angular <= diff_yaw)
+    opti_.subject_to(diff_yaw <= config_.max_angular)
 
 # 最適化ソルバを設定
-opti.solver("ipopt")
+opti_.solver("ipopt")
 # 最適化
-#sol = opti.solve()
+# sol = opti_.solve()
 
 # print(f'評価関数：{sol.value(obj)}')
 # print(f'X: {sol.value(X)}')
