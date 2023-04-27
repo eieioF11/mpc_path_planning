@@ -102,6 +102,23 @@ for i in range(config_.horizon):
 
 # 最適化ソルバを設定
 opti_.solver("ipopt")
+
+# 初期値設定
+current_position = [0.,0.,0.]
+current_velocity = [0.,0.,0.]
+target_position = [9.,9.,0.]
+
+current_pos = casadi.DM(current_position)
+current_vel = casadi.DM(current_velocity)
+
+dm_current_state_ = casadi.vertcat(current_velocity,current_position)
+dm_X_target = casadi.DM(target_position+[0.,0.,0.])
+opti_.set_value(current_state_,dm_current_state_)
+
+x_init_ = casadi.DM.zeros(x_init_.size())
+
+
+
 # 最適化
 # sol = opti_.solve()
 
