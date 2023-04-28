@@ -1,4 +1,7 @@
 import casadi
+import pathplanner.a_star as a_star
+import numpy as np
+import matplotlib.pyplot as plt
 
 
 class mpc_config(object):
@@ -106,7 +109,7 @@ opti_.solver("ipopt")
 # 初期値設定
 current_position = [0.,0.,0.]
 current_velocity = [0.,0.,0.]
-target_position = [9.,9.,0.]
+target_position =  [9.,9.,0.]
 
 current_pos = casadi.DM(current_position)
 current_vel = casadi.DM(current_velocity)
@@ -118,9 +121,57 @@ opti_.set_value(current_state_,dm_current_state_)
 x_init_ = casadi.DM.zeros(x_init_.size())
 u_init = casadi.DM.zeros(U.size())
 
+# grid_path
+path = np.array([])
+grid=np.array([
+    [0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,1,1,0,0,0,0,0,0,0],
+    [0,0,1,1,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,1,1,0,0,0],
+    [0,0,0,0,0,0,1,1,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0]
+])
+map_resolution = 1
+origin = [0,0]
+def conversion_grid_pos(map_pos):
+    return [int(map_pos[0]/map_resolution+origin[0]),int(map_pos[1]/map_resolution+origin[1])]
+def conversion_map_pos(grid_pos):
+    return [(grid_pos[0]-origin[0])*map_resolution,(grid_pos[1]-origin[1])*map_resolution]
+
+grid_path_planner = a_star.PathPlanner(grid,False)
+init,path=grid_path_planner.a_star(np.array([int(current_position[0]),int(current_position[1])]),np.array([int(target_position[0]),int(target_position[1])]))
+if init!=-1:
+    path=np.vstack((init,path))#初期位置をpathに追加
+    #結果表示
+    print(path)
+    plt.imshow(grid)
+    plt.plot(path[:,1],path[:,0])
+    plt.show()
+# 初期値代入
 for i in range(config_.horizon):
-    u_init[:,i] = casadi.DM.zeros(3)
-    x_init_[:,i+1]=dm_current_state_ + (dm_X_target - dm_current_state_)*(i/(config_.horizon-1))
+    if init!=-1:
+        pass
+        # path_len = len(path)
+        # yaw_t = i / (config_.horizon -1.0)
+        # step = path_len / (config_.horizon -1.0)
+
+        # max_step = config_.max_velocity * config_.dt / map_resolution
+        # step = min([step,max_step])
+
+        # glen = step * i
+        # if glen > path_len:
+        #     glen = path_len
+
+        # xy=conversion_map_pos(xy[0],xy[1])
+    else :
+        print('error')
+        u_init[:,i] = casadi.DM.zeros(3)
+        x_init_[:,i+1]=dm_current_state_ + (dm_X_target - dm_current_state_)*(i/(config_.horizon-1))
+        print(x_init_[:,i])
 
 opti_.set_initial(U,u_init)
 opti_.set_initial(X,x_init_)
