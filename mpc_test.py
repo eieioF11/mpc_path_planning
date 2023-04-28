@@ -116,12 +116,21 @@ dm_X_target = casadi.DM(target_position+[0.,0.,0.])
 opti_.set_value(current_state_,dm_current_state_)
 
 x_init_ = casadi.DM.zeros(x_init_.size())
+u_init = casadi.DM.zeros(U.size())
 
+for i in range(config_.horizon):
+    u_init[:,i] = casadi.DM.zeros(3)
+    x_init_[:,i+1]=dm_current_state_ + (dm_X_target - dm_current_state_)*(i/(config_.horizon-1))
+
+opti_.set_initial(U,u_init)
+opti_.set_initial(X,x_init_)
+
+opti_.set_value(X_target_,dm_X_target)
 
 
 # 最適化
-# sol = opti_.solve()
+sol = opti_.solve()
 
-# print(f'評価関数：{sol.value(obj)}')
-# print(f'X: {sol.value(X)}')
-# print(f'U: {sol.value(U)}')
+print(f'評価関数：{sol.value(obj)}')
+print(f'X: {sol.value(X)}')
+print(f'U: {sol.value(U)}')
