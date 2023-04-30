@@ -38,21 +38,29 @@ lpf_theta_gain_ = config_.dt / (config_.dt + config_.theta_vel_time_constant)
 # 静止座標系
 # 入力量: 各軸方向の速度入力、実際の機体速度はこの入力に遅れが生じたものであるとする
 # 状態量: [vel_x, vel_y, vel_theta, pos_x, pos_y, pos_theta]^T
-def gen_kinematic_model():
-    # 状態量
-    vel = casadi.MX.sym("vel", 3)
-    pos = casadi.MX.sym("pos", 3)
-    state = casadi.vertcat(vel, pos)
-    # 入力量
-    control = casadi.MX.sym("control", 3)
+class Kinematic:
+    def __init__(self):
+        pass
+    def model(self):
+        pass
 
-    MJ = casadi.vertcat(lpf_xy_gain_, lpf_xy_gain_, lpf_theta_gain_)
-    MMJ = casadi.MX.ones(3) - MJ
-    vel_next = casadi.times(MMJ, vel) + casadi.times(MJ, control)
-    pos_next = pos + config_.dt * vel_next
-    state_next = casadi.vertcat(vel_next, pos_next)
-    return casadi.Function("kinematic_model", [state, control], [state_next])
+class OmniDirectional(Kinematic):
+    def __init__(self):
+        pass
+    def model(self):
+        # 状態量
+        vel = casadi.MX.sym("vel", 3)
+        pos = casadi.MX.sym("pos", 3)
+        state = casadi.vertcat(vel, pos)
+        # 入力量
+        control = casadi.MX.sym("control", 3)
 
+        MJ = casadi.vertcat(lpf_xy_gain_, lpf_xy_gain_, lpf_theta_gain_)
+        MMJ = casadi.MX.ones(3) - MJ
+        vel_next = casadi.times(MMJ, vel) + casadi.times(MJ, control)
+        pos_next = pos + config_.dt * vel_next
+        state_next = casadi.vertcat(vel_next, pos_next)
+        return casadi.Function("kinematic_model", [state, control], [state_next])
 
 # 最適化変数
 u_sol_ = casadi.DM.zeros(3, config_.horizon)
@@ -84,7 +92,8 @@ obj += casadi.mtimes(casadi.mtimes(dx_final.T, Q_final), dx_final)
 print(obj)
 opti_.minimize(obj)
 # 制約条件を定義
-kinematic_model = gen_kinematic_model()
+kinematic=OmniDirectional()
+kinematic_model = kinematic.model()
 opti_.subject_to(X[:, 0] == current_state_)  # 初期状態
 for i in range(config_.horizon):
     # 対象が従う運動モデル
@@ -154,19 +163,18 @@ if init!=-1:
 # 初期値代入
 for i in range(config_.horizon):
     if init!=-1:
-        pass
-        # path_len = len(path)
-        # yaw_t = i / (config_.horizon -1.0)
-        # step = path_len / (config_.horizon -1.0)
+        path_len = len(path)
+        yaw_t = i / (config_.horizon -1.0)
+        step = path_len / (config_.horizon -1.0)
 
-        # max_step = config_.max_velocity * config_.dt / map_resolution
-        # step = min([step,max_step])
+        max_step = config_.max_velocity * config_.dt / map_resolution
+        step = min([step,max_step])
 
-        # glen = step * i
-        # if glen > path_len:
-        #     glen = path_len
+        glen = step * i
+        if glen > path_len:
+            glen = path_len
 
-        # xy=conversion_map_pos(xy[0],xy[1])
+        #xy=conversion_map_pos(xy[0],xy[1])
     else :
         print('error')
         u_init[:,i] = casadi.DM.zeros(3)
