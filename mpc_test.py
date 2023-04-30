@@ -37,30 +37,34 @@ lpf_theta_gain_ = config_.dt / (config_.dt + config_.theta_vel_time_constant)
 # 離散化した全方位移動モデル
 # 静止座標系
 # 入力量: 各軸方向の速度入力、実際の機体速度はこの入力に遅れが生じたものであるとする
-# 状態量: [vel_x, vel_y, vel_theta, pos_x, pos_y, pos_theta]^T
+# 状態量: [velocity_x, velocity_y, velocity_theta, position_x, position_y, position_theta]^T
 class Kinematic:
+    # 状態量
+    velocity = casadi.MX.sym("velocity", 3)
+    position = casadi.MX.sym("position", 3)
+    state = casadi.vertcat(velocity, position)
+    # 入力量
+    control = casadi.MX.sym("control", 3)
     def __init__(self):
         pass
+    def set_variable(self,vel_n,pos_n,control_n):
+        self.velocity = casadi.MX.sym("velocity", vel_n)
+        self.position = casadi.MX.sym("position",pos_n)
+        self.state = casadi.vertcat(self.velocity, self.position)
+        self.control = casadi.MX.sym("control", control_n)
     def model(self):
         pass
 
 class OmniDirectional(Kinematic):
     def __init__(self):
-        pass
+        self.set_variable(3,3,3)
     def model(self):
-        # 状態量
-        vel = casadi.MX.sym("vel", 3)
-        pos = casadi.MX.sym("pos", 3)
-        state = casadi.vertcat(vel, pos)
-        # 入力量
-        control = casadi.MX.sym("control", 3)
-
         MJ = casadi.vertcat(lpf_xy_gain_, lpf_xy_gain_, lpf_theta_gain_)
         MMJ = casadi.MX.ones(3) - MJ
-        vel_next = casadi.times(MMJ, vel) + casadi.times(MJ, control)
-        pos_next = pos + config_.dt * vel_next
-        state_next = casadi.vertcat(vel_next, pos_next)
-        return casadi.Function("kinematic_model", [state, control], [state_next])
+        velocity_next = casadi.times(MMJ, self.velocity) + casadi.times(MJ, self.control)
+        position_next = self.position + config_.dt * velocity_next
+        state_next = casadi.vertcat(velocity_next, position_next)
+        return casadi.Function("OmniDirectional", [self.state, self.control], [state_next])
 
 # 最適化変数
 u_sol_ = casadi.DM.zeros(3, config_.horizon)
