@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 
 class mpc_config(object):
-    horizon = 200  # ホライゾン長さ
+    horizon = 10  # ホライゾン長さ
     dt = 0.01  # 離散化ステップ
     # 機体スペック
     max_velocity = 1.0  # [m/s]
@@ -115,7 +115,7 @@ for i in range(config_.horizon):
     du = U[:, i]
     obj += casadi.mtimes(casadi.mtimes(dx_i.T, Q), dx_i)
     obj += casadi.mtimes(casadi.mtimes(du.T, R), du)
-dx_final = X[config_.horizon] - X_target_
+dx_final = X[:,config_.horizon] - X_target_
 obj += casadi.mtimes(casadi.mtimes(dx_final.T, Q_final), dx_final)
 print(obj)
 opti_.minimize(obj)
@@ -152,7 +152,7 @@ current_pos = casadi.DM(current_position)
 current_vel = casadi.DM(current_velocity)
 
 dm_current_state_ = casadi.vertcat(current_velocity,current_position)
-dm_X_target = casadi.DM(target_position+[0.,0.,0.])
+dm_X_target = casadi.DM([0.,0.,0.]+target_position)
 opti_.set_value(current_state_,dm_current_state_)
 
 x_init_ = casadi.DM.zeros(x_init_.size())
