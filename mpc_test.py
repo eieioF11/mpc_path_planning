@@ -3,10 +3,37 @@ import pathplanner.a_star as a_star
 import numpy as np
 import matplotlib.pyplot as plt
 
+# map
+grid=np.array([
+    [0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,1,1,0,0,0,0,0,0,0],
+    [0,0,1,1,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,1,1,0,0,0],
+    [0,0,0,0,0,0,1,1,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0]
+])
+map_resolution = 1
+origin = [0,0]
+def path_length(path):
+    length=0.
+    for i in range(len(path)-1):
+        diff = path[i+1]-path[i]
+        length+=np.sqrt(abs(diff[0])+abs(diff[1]))
+    return length
+#変換
+def conversion_grid_pos(map_pos):
+    return [int(map_pos[0]/map_resolution+origin[0]),int(map_pos[1]/map_resolution+origin[1])]
+def conversion_map_pos(grid_pos):
+    return [(grid_pos[0]-origin[0])*map_resolution,(grid_pos[1]-origin[1])*map_resolution]
 
+#config
 class mpc_config(object):
-    horizon = 10  # ホライゾン長さ
-    dt = 0.01  # 離散化ステップ
+    horizon = 20  # ホライゾン長さ
+    dt = 0.1  # 離散化ステップ
     # 機体スペック
     max_velocity = 1.0  # [m/s]
     max_angular = 1.0  # [m/s]
@@ -41,8 +68,9 @@ class Kinematic:
     # 入力量
     control_ = casadi.MX.sym("control", 3)
     def __init__(self,config):
-        self.lpf_xy_gain_ = config_.dt / (config_.dt + config_.xy_vel_time_constant)
-        self.lpf_theta_gain_ = config_.dt / (config_.dt + config_.theta_vel_time_constant)
+        self.lpf_xy_gain_ = config.dt / (config.dt + config.xy_vel_time_constant)
+        self.lpf_theta_gain_ = config.dt / (config.dt + config.theta_vel_time_constant)
+        self.config_=config
     def set_variable(self,vel_n,pos_n,control_n):
         self.velocity_ = casadi.MX.sym("velocity", vel_n)
         self.position_ = casadi.MX.sym("position",pos_n)
@@ -59,13 +87,13 @@ class OmniDirectional(Kinematic):
         MJ = casadi.vertcat(self.lpf_xy_gain_,self.lpf_xy_gain_, self.lpf_theta_gain_)
         MMJ = casadi.MX.ones(3) - MJ
         velocity_next = casadi.times(MMJ, self.velocity_) + casadi.times(MJ, self.control_)
-        position_next = self.position_ + config_.dt * velocity_next
+        position_next = self.position_ + self.config_.dt * velocity_next
         state_next = casadi.vertcat(velocity_next, position_next)
         return casadi.Function("OmniDirectional", [self.state_, self.control_], [state_next])
 
 # 制約条件
 def guard_circle_subject(xy,center,size,comp):#円の制約
-    dx = casadi.times(casadi.MX(xy) - casadi.MX(center),casadi.vertcat(casadi.MX({2./size[0],2./size[1]})))
+    dx = casadi.times(casadi.MX(xy) - casadi.MX(center),casadi.vertcat(casadi.MX([2./size[0],2./size[1]])))
     lh = dx**2
     if comp == "<" or comp == "keep in":
         return lh < 1
@@ -78,8 +106,8 @@ def guard_circle_subject(xy,center,size,comp):#円の制約
     return lh
 
 def guard_rect_subject(xy,center,size,comp):#四角の制約
-    dx = casadi.times(casadi.MX(xy) - casadi.MX(center),casadi.vertcat(casadi.MX({1./size[0],1./size[1]})))
-    lh = casadi.MX(abs(dx[0]+dx[1])+abs(dx[0]-dx[1]))
+    dx = casadi.times(casadi.MX(xy) - casadi.MX(center),casadi.vertcat(casadi.MX([1./size[0],1./size[1]])))
+    lh = casadi.MX(casadi.fabs(dx[0]+dx[1])+casadi.fabs(dx[0]-dx[1]))
     if comp == "<" or comp == "keep in":
         return lh < 1
     if comp == ">" or comp == "keep out":
@@ -160,31 +188,6 @@ u_init = casadi.DM.zeros(U.size())
 
 # grid_path
 path = np.array([])
-grid=np.array([
-    [0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,1,1,0,0,0,0,0,0,0],
-    [0,0,1,1,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,1,1,0,0,0],
-    [0,0,0,0,0,0,1,1,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0]
-])
-map_resolution = 1
-origin = [0,0]
-def path_length(path):
-    length=0.
-    for i in range(len(path)-1):
-        diff = path[i+1]-path[i]
-        length+=np.sqrt(abs(diff[0])+abs(diff[1]))
-    return length
-#変換
-def conversion_grid_pos(map_pos):
-    return [int(map_pos[0]/map_resolution+origin[0]),int(map_pos[1]/map_resolution+origin[1])]
-def conversion_map_pos(grid_pos):
-    return [(grid_pos[0]-origin[0])*map_resolution,(grid_pos[1]-origin[1])*map_resolution]
 #線形補間
 def lerp(path,t):
     if t<0.0:
@@ -260,6 +263,8 @@ opti_.set_initial(X,x_init_)
 
 opti_.set_value(X_target_,dm_X_target)
 
+for i in range(config_.horizon):
+    opti_.subject_to(guard_rect_subject(X[3:5,i],conversion_map_pos([2.,2.]),[map_resolution,map_resolution],"keep out"))
 
 # 最適化
 sol = opti_.solve()
